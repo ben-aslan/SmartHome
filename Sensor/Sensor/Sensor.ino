@@ -3,13 +3,19 @@
 
 #define nrts A0
 #define ldrphotocell A1
+#define led 2
+#define buzzer 4
+
+unsigned long startMillis;
+unsigned long currentMillis;
+const unsigned long period = 10000;
 
 const uint64_t pipeOut = 0xE84D84FFLL;  //IMPORTANT: The same as in the receiver!!!
 
 RF24 radio(9, 10);
 
 struct Data {
-  byte thermometere;
+  int thermometere;
   int brightness;
 };
 
@@ -25,6 +31,9 @@ void resetData() {
 }
 
 void setup() {
+  pinMode(led, OUTPUT);
+  pinMode(buzzer, OUTPUT);
+  digitalWrite(led, 1);
   // put your setup code here, to run once:
   radio.begin();
   // radio.setAutoAck(false);
@@ -34,9 +43,15 @@ void setup() {
 
   Serial.begin(9600);
 
-radio.printDetails();
+  radio.printDetails();
   Serial.print("Is connected : ");
   Serial.println(radio.isChipConnected());
+
+  startMillis = millis();
+
+  if (radio.isChipConnected() == 1) {
+    digitalWrite(2, 0);
+  }
 }
 
 double Termistor(int analogOkuma) {
@@ -48,14 +63,28 @@ double Termistor(int analogOkuma) {
 }
 
 void loop() {
-  // put your main code here, to run repeatedly:
+  if (radio.isChipConnected() == 1) {
+    digitalWrite(led, 0);
+  }
 
-  data.thermometere = Termistor(analogRead(nrts));
-  data.brightness = analogRead(ldrphotocell);
+  if (Termistor(analogRead(nrts)) >= 35) {
+    tone(buzzer, 5000);
+  }
 
-  Serial.println(Termistor(analogRead(nrts)));
+  currentMillis = millis();
+  if (currentMillis - startMillis >= period) {
+    data.thermometere = Termistor(analogRead(nrts));
+    data.brightness = analogRead(ldrphotocell);
 
-  radio.write(&data, sizeof(Data));
+    Serial.println(Termistor(analogRead(nrts)));
 
-  delay(10000);
+    radio.write(&data, sizeof(Data));
+
+
+    if (Termistor(analogRead(nrts)) <= 35) {
+      noTone(buzzer);
+    }
+
+    startMillis = currentMillis;
+  }
 }
