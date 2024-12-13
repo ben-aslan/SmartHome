@@ -1,22 +1,33 @@
-#include <nRF24L01.h>  //Downlaod it here: https://www.electronoobs.com/eng_arduino_NRF24_lib.php
+#include <nRF24L01.h>
 #include <RF24.h>
 
 #define nrts A0
 #define ldrphotocell A1
 #define led 2
 #define buzzer 4
+#define lamp_pin 3
+#define komed_1 8
+#define komed_2 7
 
 unsigned long startMillis;
+unsigned long startMillis2;
+unsigned long startMillis3;
 unsigned long currentMillis;
 const unsigned long period = 10000;
 
-const uint64_t pipeOut = 0xE84D84FFLL;  //IMPORTANT: The same as in the receiver!!!
+const uint64_t pipeOut = 0xE84D84FFLL;   //IMPORTANT: The same as in the receiver!!!
+const uint64_t pipeOut2 = 0xE84D85FFLL;  //IMPORTANT: The same as in the receiver!!!
 
 RF24 radio(9, 10);
 
+bool lampStatus = 1;
+
 struct Data {
-  int thermometere;
-  int brightness;
+  float thermometere;
+  uint8_t brightness = 1023;
+  bool lamp;
+  bool commode1;
+  bool commode2;
 };
 
 Data data;
@@ -33,12 +44,24 @@ void resetData() {
 void setup() {
   pinMode(led, OUTPUT);
   pinMode(buzzer, OUTPUT);
-  digitalWrite(led, 1);
+  pinMode(komed_1, INPUT);
+  pinMode(komed_2, INPUT);
+  digitalWrite(led, 0);
   // put your setup code here, to run once:
   radio.begin();
   // radio.setAutoAck(false);
   // radio.setDataRate(RF24_250KBPS);
+
+  pinMode(lamp_pin, OUTPUT);
+
+  digitalWrite(lamp_pin, lampStatus);
+
+  radio.setChannel(84);            // Channel(0 ... 127)
+  radio.setDataRate(RF24_2MBPS);   // RF24_250KBPS, RF24_1MBPS, RF24_2MBPS)
+  radio.setPALevel(RF24_PA_HIGH);  //RF24_PA_MIN=-18dBm, RF24_PA_LOW=-12dBm, RF24_PA_HIGH=-6dBm, RF24_PA_MAX=0dBm
+
   radio.openWritingPipe(pipeOut);
+  radio.openReadingPipe(0, pipeOut2);
   resetData();
 
   Serial.begin(9600);
@@ -63,28 +86,48 @@ double Termistor(int analogOkuma) {
 }
 
 void loop() {
+  currentMillis = millis();
+  if (currentMillis - startMillis2 >= 100) {
+    if (radio.available()) {
+      resetData();
+      Data a;
+      radio.read(&a, sizeof(a));
+
+      lampStatus = a.lamp;
+
+      startMillis2 = currentMillis;
+    }
+
+    if (currentMillis - startMillis >= 100) {
+      radio.stopListening();
+      data.thermometere = Termistor(analogRead(nrts));
+      data.brightness = map(analogRead(ldrphotocell), 0, 1023, 0, 255);
+      data.lamp = digitalRead(3);
+      data.commode1 = digitalRead(7);
+      data.commode2 = digitalRead(8);
+
+      radio.write(&data, sizeof(Data));
+
+
+      if (Termistor(analogRead(nrts)) <= 35) {
+        noTone(buzzer);
+      }
+
+      radio.startListening();
+      startMillis = currentMillis;
+    }
+  }
+
+  if (currentMillis - startMillis3 >= 100) {
+    digitalWrite(lamp_pin, lampStatus);
+    startMillis3 = currentMillis;
+  }
+
   if (radio.isChipConnected() == 1) {
     digitalWrite(led, 0);
   }
 
   if (Termistor(analogRead(nrts)) >= 35) {
     tone(buzzer, 5000);
-  }
-
-  currentMillis = millis();
-  if (currentMillis - startMillis >= period) {
-    data.thermometere = Termistor(analogRead(nrts));
-    data.brightness = analogRead(ldrphotocell);
-
-    Serial.println(Termistor(analogRead(nrts)));
-
-    radio.write(&data, sizeof(Data));
-
-
-    if (Termistor(analogRead(nrts)) <= 35) {
-      noTone(buzzer);
-    }
-
-    startMillis = currentMillis;
   }
 }
