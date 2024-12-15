@@ -20,7 +20,7 @@ const uint64_t pipeOut2 = 0xE84D85FFLL;  //IMPORTANT: The same as in the receive
 
 RF24 radio(9, 10);
 
-bool lampStatus = 1;
+bool lampStatus = 0;
 
 struct Data {
   float thermometere;
